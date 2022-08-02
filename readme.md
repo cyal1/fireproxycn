@@ -9,8 +9,7 @@ https://usercenter.console.aliyun.com/?spm=api-workbench.API%20Explorer.0.0.7fd9
 安装haproxy
 `brew install haproxy`
 
-运行负载均衡
-`haproxy -f haproxy.cfg`
+
 
 # 使用
 ## 查看所有 api
@@ -19,6 +18,9 @@ python3 fireproxycn.py --command list
 python3 fireproxycn.py --command delete -all 
 ## 创建 api gateway
 python3 fireproxycn.py --command create --url https://www.example.com/admin/ 
+
+## 运行负载均衡
+`haproxy -f haproxy.cfg` haproxy.cfg 见创建 api gateway命令行输出
 ![create](./create.png)
 
 ![fireproxycn](./fireproxycn.png)
