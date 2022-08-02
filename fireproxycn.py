@@ -191,6 +191,25 @@ class Sample:
             print(error)
             UtilClient.assert_as_string(error.message)
 
+    def getGroupId(self, groupName):
+        gid = None
+        groups = self.getGroups()
+        if groups.body.total_count != 0:
+            for group in groups.body.api_group_attributes.api_group_attribute:
+                if group.group_name == groupName:
+                    gid = group.group_id
+                    break
+        return gid
+
+    def createSubdomain(self, groupName, url):
+        gid = self.getGroupId(groupName)
+        if gid is None:
+            gid = self.setGroup(groupName).body.group_id
+        api_id = self.setApiGateway(gid, url).body.api_id
+        self.deployApi(gid, api_id)
+        group_describe = self.getApiGroupDescribe(gid).body
+        return group_describe.sub_domain
+
 
 def getApiGatewayRegions(accessKeyId, accessKeySecret):
     return Sample(accessKeyId, accessKeySecret).getRegions().body.regions.to_map()["Region"]
@@ -202,7 +221,7 @@ def listAPI(accessKeyId, accessKeySecret):
         sample = Sample(accessKeyId, accessKeySecret, region["RegionEndpoint"])
         groups = sample.getGroups()
         print(
-            f'Region: {region["LocalName"]},Endpoint: {region["RegionEndpoint"]}, Groups TotalCount: {groups.body.total_count}')
+            f'Region: {region["LocalName"]} Endpoint: {region["RegionEndpoint"]}, Groups TotalCount: {groups.body.total_count}')
         if groups.body.total_count != 0:
             for api_group_attribute in groups.body.api_group_attributes.api_group_attribute:
                 group_id = api_group_attribute.group_id
@@ -229,7 +248,7 @@ def parse_arguments() -> Tuple[argparse.Namespace, str]:
     parser.add_argument('--command',
                         help='Commands: list, create, delete', type=str, default=None)
     parser.add_argument('--endpoint',
-                        help='aliyun endpoint', type=str, default=None)
+                        help='aliyun endpoint (RegionId)', type=str, default=None)
     parser.add_argument('--group_id',
                         help='GROUP ID', type=str, required=False)
     parser.add_argument('--api_id',
@@ -257,57 +276,48 @@ if __name__ == '__main__':
             regions = getApiGatewayRegions(accessKeyId, accessKeySecret)
             for region in regions:
                 sample = Sample(accessKeyId, accessKeySecret, region["RegionEndpoint"])
-                groups = sample.getGroups()
-                if groups.body.total_count != 0:
-                    for api_group_attribute in groups.body.api_group_attributes.api_group_attribute:
-                        group_id = api_group_attribute.group_id
-                        if api_group_attribute.group_name == groupName:
-                            api_list = sample.getDescribeApi(group_id).body
-                            if api_list.total_count != 0:
-                                for api in api_list.api_summarys.api_summary:
-                                    sample.deleteApi(group_id, api.api_id)
-                                    sample.deleteGroup(group_id)
-                                    print(
-                                        f"Delete Api id: {api.api_id}, Region: {api.region_id}, Group name:  {api.group_name}")
+                gid = sample.getGroupId(groupName)
+                if gid is not None:
+                    api_list = sample.getDescribeApi(gid).body
+                    if api_list.total_count != 0:
+                        for api in api_list.api_summarys.api_summary:
+                            sample.deleteApi(gid, api.api_id)
+                            sample.deleteGroup(gid)
+                            print(
+                                f"Delete Api id: {api.api_id}, Region: {api.region_id}, Group name:  {api.group_name}")
 
         else:
-            print(Sample(accessKeyId, accessKeySecret, endpoint=args.endpoint).deleteApi(group_id=args.group_id,
-                                                                                         api_id=args.api_id).body)
-        # print(f"Deleting => success")
+            sample = Sample(accessKeyId, accessKeySecret, endpoint=args.endpoint)
+            sample.deleteApi(group_id=args.group_id, api_id=args.api_id)
+            sample.deleteGroup(args.group_id)
+            # print(f"Deleting => success")
 
     elif args.command == 'create':
-        # subdomains = []
-        haproxy_backend = ""
-        for region in getApiGatewayRegions(accessKeyId, accessKeySecret):
-            region_endpoint = region["RegionEndpoint"]
-            if 'apigateway.cn' in region_endpoint:
-                # 'apigateway.ap' in region_endpoint:
-                sample = Sample(accessKeyId, accessKeySecret, region_endpoint)
-
-                group_id = None
-                for group in sample.getGroups().body.api_group_attributes.api_group_attribute:
-                    if group.group_name == groupName:
-                        group_id = group.group_id
-                        break
-                if group_id is None:
-                    group_id = sample.setGroup(groupName).body.group_id
-
-                api_id = sample.setApiGateway(group_id, args.url).body.api_id
-                sample.deployApi(group_id, api_id)
-                groupDescribe = sample.getApiGroupDescribe(group_id).body
-                subdomain = groupDescribe.sub_domain
-                print(f"{subdomain} {region['LocalName']} Created")
-                haproxy_backend += f"server {subdomain} {subdomain}:80 # {region['LocalName']}\n  "
-                # subdomains.append(
-                #     {"endpoint": region_endpoint, "group_id": group_id, "api_id": api_id, "subdomain": subdomain})
-        print(f"""
+        if args.endpoint:
+            sample = Sample(accessKeyId, accessKeySecret, args.endpoint)
+            subdomain = sample.createSubdomain(groupName, args.url)
+            print(f"{subdomain} ==> {args.url}")
+        else:
+            # subdomains = []
+            haproxy_backend = ""
+            for region in getApiGatewayRegions(accessKeyId, accessKeySecret):
+                region_endpoint = region["RegionEndpoint"]
+                if 'apigateway.cn' in region_endpoint:
+                    # 'apigateway.ap' in region_endpoint:
+                    sample = Sample(accessKeyId, accessKeySecret, region_endpoint)
+                    subdomain = sample.createSubdomain(groupName, args.url)
+                    print(f"{subdomain} {region['LocalName']} Created")
+                    haproxy_backend += f"server {subdomain} {subdomain}:80 # {region['LocalName']}\n  "
+                    # subdomains.append(
+                    #     {"endpoint": region_endpoint, "group_id": group_id, "api_id": api_id, "subdomain": subdomain})
+            print(f"""
 ###################################################
 http://127.0.0.1:18000/* ==> {args.url}*
 You need to copy the following content to a FILE, run:
 haproxy -f FILE
 FFUF -w dicc.txt -u http://127.0.0.1:18000/FUZZ
 ###################################################""")
-        haproxy_cfg = """
+            haproxy_cfg = """
 defaults
   mode http
   timeout client 10s
@@ -323,7 +333,7 @@ backend fireproxycn
   http-send-name-header Host
   http-response del-header content-disposition
   %s""" % haproxy_backend
-        print(haproxy_cfg)
+            print(haproxy_cfg)
 
     else:
         print(help_text)

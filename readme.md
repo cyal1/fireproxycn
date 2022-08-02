@@ -1,9 +1,9 @@
 # 准备
 访问 https://apigateway.console.aliyun.com/ 开通阿里云api gateway
 
-获取阿里云 ak,aks
+获取阿里云 ak,aks，修改 fireproxycn.py 266,267 行
 https://usercenter.console.aliyun.com/?spm=api-workbench.API%20Explorer.0.0.7fd91e0fT7ahK0
-修改 fireproxycn.py 247,248行
+
 
 安装阿里云SDK
 `pip install alibabacloud_cloudapi20160714==2.2.5`
