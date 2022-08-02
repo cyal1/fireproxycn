@@ -1,5 +1,6 @@
 # 准备
 访问 https://apigateway.console.aliyun.com/ 开通阿里云api gateway
+
 获取阿里云 ak,aks
 https://usercenter.console.aliyun.com/?spm=api-workbench.API%20Explorer.0.0.7fd91e0fT7ahK0
 修改 fireproxycn.py 247,248行
